@@ -1,0 +1,58 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap');
+@import "tailwindcss";
+
+* { font-family: "Outfit", sans-serif; }
+
+@theme {
+  /* Dark theme colors */
+  --color-dark-primary: #0F0F0F;
+  --color-dark-secondary: #1A1A1A;
+  --color-dark-tertiary: #2A2A2A;
+  
+  /* Golden color palette */
+  --color-golden: #FFD700;
+  --color-golden-light: #FFED4E;
+  --color-golden-dark: #FFA500;
+  
+  /* Legacy primary colors (keeping for compatibility) */
+  --color-primary: #26667F;
+  --color-primary-50:  #DDF4E7;
+  --color-primary-100: #67C090;
+  --color-primary-200: #26667F;
+  --color-primary-300: #124170;
+}
+
+body {
+  background-color: var(--color-dark-primary);
+  color: white;
+}
+
+.gradient-golden {
+  background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+}
+
+.gradient-dark {
+  background: linear-gradient(135deg, #0F0F0F 0%, #2A2A2A 100%);
+}
+
+.generating-animation {
+  background: linear-gradient(-45deg, #FFD700, #FFA500, #FFD700, #FFA500);
+  background-size: 400% 400%;
+  animation: gradient 2s ease infinite;
+}
+
+@keyframes gradient {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.image-placeholder {
+  background: radial-gradient(circle at center, #2A2A2A 0%, #1A1A1A 100%);
+  border: 2px dashed #FFD700;
+}
+
+.card-hover:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 20px 25px -5px rgba(255, 215, 0, 0.2), 0 10px 10px -5px rgba(255, 215, 0, 0.1);
+}

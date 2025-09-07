@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="80" viewBox="0 0 300 80">
+  <!-- Gradient Background for Style -->
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#124170;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#67C090;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Icon (Eye with Cast waves) -->
+  <circle cx="40" cy="40" r="28" fill="url(#grad)" />
+  <path d="M25 40 Q40 20 55 40 Q40 60 25 40Z" fill="white" opacity="0.9"/>
+  <circle cx="40" cy="40" r="8" fill="#124170"/>
+  
+  <!-- Waves -->
+  <path d="M65 30 C75 35, 75 45, 65 50" stroke="#67C090" stroke-width="3" fill="none" />
+  <path d="M75 25 C90 35, 90 45, 75 55" stroke="#DDF4E7" stroke-width="2" fill="none" />
+
+  <!-- Text -->
+  <text x="100" y="50" font-family="Outfit, sans-serif" font-size="32" fill="#124170" font-weight="700">
+    Vision
+  </text>
+  <text x="210" y="50" font-family="Outfit, sans-serif" font-size="32" fill="#67C090" font-weight="700">
+    Cast
+  </text>
+</svg>

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 512" role="img" aria-labelledby="title" fill="none">
+  <title>VisionCast logo</title>
+  <defs>
+    <style>
+      .vc { color:#124170; }
+      text { font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    </style>
+  </defs>
+
+  <!-- Icon (eye + play) -->
+  <g class="vc">
+    <path d="M80 256C224 96 352 80 512 80s288 16 432 176C800 416 672 432 512 432S224 416 80 256Z"
+          stroke="currentColor" stroke-width="28" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <path d="M468 206c0-8 9-13 16-9l88 51c7 4 7 14 0 18l-88 51c-7 4-16-1-16-9z" fill="currentColor"/>
+  </g>
+
+  <!-- Wordmark -->
+  <text x="512" y="486" text-anchor="middle" class="vc" fill="currentColor" font-weight="700" font-size="120">
+    VisionCast
+  </text>
+</svg>
