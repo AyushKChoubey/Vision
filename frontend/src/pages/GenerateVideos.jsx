@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { Video, Play, Pause, Download, Share2, Copy, Sparkles, Wand2, Clock, Film } from 'lucide-react'
+import apiService from '../services/api.js'
 
 const GenerateVideos = () => {
   const [prompt, setPrompt] = useState('')
@@ -8,6 +9,7 @@ const GenerateVideos = () => {
   const [videoStyle, setVideoStyle] = useState('cinematic')
   const [videoDuration, setVideoDuration] = useState('5')
   const [isPlaying, setIsPlaying] = useState(false)
+  const [error, setError] = useState(null)
 
   const dummyVideoThumbnails = [
     'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=200',
@@ -16,15 +18,34 @@ const GenerateVideos = () => {
     'https://images.unsplash.com/photo-1446776877081-d282a0f896e2?w=200'
   ]
 
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
     if (!prompt.trim()) return
     
     setIsGenerating(true)
-    setTimeout(() => {
+    setError(null)
+    
+    try {
+      const response = await apiService.creations.generateVideo(prompt, {
+        style: videoStyle,
+        duration: videoDuration,
+        type: 'video'
+      })
+
+      if (response.status === 'success' && response.data.creation) {
+        setGeneratedVideo(response.data.creation.fileUrl || response.data.creation.thumbnailUrl)
+      } else {
+        throw new Error(response.message || 'Failed to generate video')
+      }
+    } catch (error) {
+      console.error('Video generation error:', error)
+      setError(error.message)
+      
+      // Fallback to dummy thumbnail for demo purposes
       const randomThumbnail = dummyVideoThumbnails[Math.floor(Math.random() * dummyVideoThumbnails.length)]
       setGeneratedVideo(randomThumbnail)
+    } finally {
       setIsGenerating(false)
-    }, 4000)
+    }
   }
 
   const togglePlayback = () => {

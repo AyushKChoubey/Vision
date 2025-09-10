@@ -1,13 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Camera, Save, ArrowLeft, User, Mail, Calendar, Shield } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import apiService from '../services/api.js';
 
 const ProfilePage = () => {
   const { user, updateProfile } = useAuth();
   const navigate = useNavigate();
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setSaving] = useState(false);
+  const [error, setError] = useState(null);
   const [formData, setFormData] = useState({
     firstName: user?.firstName || '',
     lastName: user?.lastName || '',
@@ -16,6 +18,19 @@ const ProfilePage = () => {
     website: user?.website || '',
     location: user?.location || '',
   });
+
+  useEffect(() => {
+    if (user) {
+      setFormData({
+        firstName: user.firstName || '',
+        lastName: user.lastName || '',
+        email: user.email || '',
+        bio: user.bio || '',
+        website: user.website || '',
+        location: user.location || '',
+      });
+    }
+  }, [user]);
 
   const handleInputChange = (e) => {
     setFormData({
@@ -26,33 +41,43 @@ const ProfilePage = () => {
 
   const handleSave = async () => {
     setSaving(true);
+    setError(null);
+    
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const result = await updateProfile(formData);
       
-      // Update user context
-      if (updateProfile) {
-        updateProfile(formData);
+      if (result.success) {
+        setIsEditing(false);
+      } else {
+        setError(result.error || 'Failed to update profile');
       }
-      
-      setIsEditing(false);
     } catch (error) {
       console.error('Failed to update profile:', error);
+      setError(error.message || 'Failed to update profile');
     } finally {
       setSaving(false);
     }
   };
 
-  const handleImageUpload = (e) => {
+  const handleImageUpload = async (e) => {
     const file = e.target.files[0];
     if (file) {
-      // In a real app, you'd upload to your server/cloud storage
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        // Update user image
-        console.log('New image:', event.target.result);
-      };
-      reader.readAsDataURL(file);
+      try {
+        setSaving(true);
+        const result = await apiService.users.uploadAvatar(file);
+        
+        if (result.status === 'success' && result.data.user) {
+          // Update the user context with new avatar
+          updateProfile({ avatar: result.data.user.avatar });
+        } else {
+          throw new Error(result.message || 'Failed to upload avatar');
+        }
+      } catch (error) {
+        console.error('Failed to upload avatar:', error);
+        setError(error.message || 'Failed to upload avatar');
+      } finally {
+        setSaving(false);
+      }
     }
   };
 
@@ -104,6 +129,13 @@ const ProfilePage = () => {
             )}
           </div>
         </div>
+
+        {/* Error Display */}
+        {error && (
+          <div className="mb-6 p-4 bg-red-900/20 border border-red-500/30 rounded-lg">
+            <p className="text-red-400 text-sm">{error}</p>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Profile Card */}

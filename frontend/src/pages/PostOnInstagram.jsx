@@ -1,18 +1,20 @@
-import React, { useMemo, useState } from 'react'
+import React, { useMemo, useState, useEffect } from 'react'
 import { Instagram, Facebook, Calendar, Clock, Image, Video, Hash, Send, Eye, CheckCircle2 } from 'lucide-react'
-
-const DUMMY_MEDIA = [
-  { id: 1, type: 'image', url: 'https://images.unsplash.com/photo-1707343843437-caacff5cfa74?w=800', title: 'AI Cityscape' },
-  { id: 2, type: 'image', url: 'https://images.unsplash.com/photo-1707343848552-893e05dba6ac?w=800', title: 'Abstract Art' },
-  { id: 3, type: 'video', url: 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800', title: 'Motion Graphics' },
-  { id: 4, type: 'image', url: 'https://images.unsplash.com/photo-1485846234645-a62644f84728?w=800', title: 'Product Shot' },
-]
+import apiService from '../services/api.js'
+import { useAuth } from '../context/AuthContext.jsx'
 
 const Pill = ({ children }) => (
   <span className="text-xs px-2 py-0.5 rounded-full bg-[#2A2A2A] border border-[#333333] text-gray-300">{children}</span>
 )
 
 const PostOnMetaSuite = () => {
+  const { user } = useAuth()
+  
+  // Media state
+  const [media, setMedia] = useState([])
+  const [loadingMedia, setLoadingMedia] = useState(true)
+  const [mediaError, setMediaError] = useState(null)
+
   // target toggles
   const [postToFacebook, setPostToFacebook] = useState(true)
   const [postToInstagram, setPostToInstagram] = useState(true)
@@ -32,6 +34,44 @@ const PostOnMetaSuite = () => {
   const [showPreview, setShowPreview] = useState(true)
   const mediaType = selectedMedia?.type || null
 
+  // Load user's creations
+  useEffect(() => {
+    const loadCreations = async () => {
+      try {
+        setLoadingMedia(true)
+        setMediaError(null)
+        
+        const response = await apiService.users.getCreations({ 
+          status: 'completed',
+          limit: 20
+        })
+        
+        if (response.status === 'success') {
+          setMedia(response.data.creations || [])
+        } else {
+          throw new Error(response.message || 'Failed to load creations')
+        }
+      } catch (error) {
+        console.error('Failed to load creations:', error)
+        setMediaError(error.message)
+        
+        // Fallback to dummy data for demo
+        setMedia([
+          { _id: 1, type: 'image', fileUrl: 'https://images.unsplash.com/photo-1707343843437-caacff5cfa74?w=800', title: 'AI Cityscape', thumbnailUrl: 'https://images.unsplash.com/photo-1707343843437-caacff5cfa74?w=200' },
+          { _id: 2, type: 'image', fileUrl: 'https://images.unsplash.com/photo-1707343848552-893e05dba6ac?w=800', title: 'Abstract Art', thumbnailUrl: 'https://images.unsplash.com/photo-1707343848552-893e05dba6ac?w=200' },
+          { _id: 3, type: 'video', fileUrl: 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800', title: 'Motion Graphics', thumbnailUrl: 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=200' },
+          { _id: 4, type: 'image', fileUrl: 'https://images.unsplash.com/photo-1485846234645-a62644f84728?w=800', title: 'Product Shot', thumbnailUrl: 'https://images.unsplash.com/photo-1485846234645-a62644f84728?w=200' },
+        ])
+      } finally {
+        setLoadingMedia(false)
+      }
+    }
+
+    if (user) {
+      loadCreations()
+    }
+  }, [user])
+
   const canPost = useMemo(() => {
     const hasTargets = postToFacebook || postToInstagram
     return hasTargets && !!selectedMedia && caption.trim().length > 0 && !isPosting
@@ -41,18 +81,37 @@ const PostOnMetaSuite = () => {
     if (!canPost) return
     setIsPosting(true)
 
-    // simulate posting + scheduling
-    await new Promise(r => setTimeout(r, 1200))
-    setIsPosting(false)
-    alert(
-      `${scheduledTime ? 'Scheduled' : 'Posted'} to ${
-        postToFacebook && postToInstagram
-          ? 'Facebook & Instagram'
-          : postToFacebook
-          ? 'Facebook'
-          : 'Instagram'
-      } successfully!`
-    )
+    try {
+      // Create post through API
+      const postData = {
+        content: caption,
+        hashtags: hashtags.split(' ').filter(tag => tag.trim()),
+        creationId: selectedMedia._id,
+        platforms: [
+          ...(postToInstagram ? ['instagram'] : []),
+          ...(postToFacebook ? ['facebook'] : [])
+        ],
+        scheduledAt: scheduledTime ? new Date(scheduledTime).toISOString() : null,
+      }
+
+      const response = await apiService.posts.create(postData)
+      
+      if (response.status === 'success') {
+        alert(`${scheduledTime ? 'Scheduled' : 'Posted'} successfully!`)
+        // Reset form
+        setCaption('')
+        setHashtags('')
+        setSelectedMedia(null)
+        setScheduledTime('')
+      } else {
+        throw new Error(response.message || 'Failed to create post')
+      }
+    } catch (error) {
+      console.error('Post creation error:', error)
+      alert(`Error: ${error.message}`)
+    } finally {
+      setIsPosting(false)
+    }
   }
 
   return (
@@ -143,24 +202,51 @@ const PostOnMetaSuite = () => {
           {/* media picker */}
           <div className="space-y-3 mb-6">
             <label className="block text-[#FFD700] font-medium">Select Media</label>
-            <div className="grid grid-cols-2 gap-3">
-              {DUMMY_MEDIA.map(m => (
-                <button
-                  key={m.id}
-                  type="button"
-                  onClick={() => setSelectedMedia(m)}
-                  className={`relative aspect-square rounded-lg overflow-hidden border-2 transition-all ${
-                    selectedMedia?.id === m.id
-                      ? 'border-[#FFD700] shadow-[0_0_20px_rgba(255,215,0,0.3)]'
-                      : 'border-[#333333] hover:border-[#FFD700]'
-                  }`}
-                >
-                  <img src={m.url} alt={m.title} className="w-full h-full object-cover" />
-                  <div className="absolute top-2 right-2">{m.type === 'image' ? <Image className="w-4 h-4" /> : <Video className="w-4 h-4" />}</div>
-                  <div className="absolute bottom-0 inset-x-0 bg-black/70 text-white text-xs p-2">{m.title}</div>
-                </button>
-              ))}
-            </div>
+            
+            {loadingMedia ? (
+              <div className="grid grid-cols-2 gap-3">
+                {[...Array(4)].map((_, i) => (
+                  <div key={i} className="aspect-square rounded-lg bg-[#2A2A2A] animate-pulse"></div>
+                ))}
+              </div>
+            ) : mediaError ? (
+              <div className="p-4 bg-red-900/20 border border-red-500/30 rounded-lg">
+                <p className="text-red-400 text-sm">{mediaError}</p>
+              </div>
+            ) : media.length === 0 ? (
+              <div className="p-4 bg-[#2A2A2A] border border-[#333333] rounded-lg text-center">
+                <p className="text-gray-400 mb-2">No media found</p>
+                <p className="text-gray-500 text-sm">Create some images or videos first</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                {media.map(m => (
+                  <button
+                    key={m._id || m.id}
+                    type="button"
+                    onClick={() => setSelectedMedia(m)}
+                    className={`relative aspect-square rounded-lg overflow-hidden border-2 transition-all ${
+                      selectedMedia?._id === m._id || selectedMedia?.id === m.id
+                        ? 'border-[#FFD700] shadow-[0_0_20px_rgba(255,215,0,0.3)]'
+                        : 'border-[#333333] hover:border-[#FFD700]'
+                    }`}
+                  >
+                    <img 
+                      src={m.thumbnailUrl || m.fileUrl || m.url} 
+                      alt={m.title} 
+                      className="w-full h-full object-cover" 
+                    />
+                    <div className="absolute top-2 right-2 bg-black/50 p-1 rounded">
+                      {m.type === 'image' ? <Image className="w-4 h-4" /> : <Video className="w-4 h-4" />}
+                    </div>
+                    <div className="absolute bottom-0 inset-x-0 bg-black/70 text-white text-xs p-2">
+                      {m.title}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+            
             {selectedMedia && (
               <div className="text-xs text-gray-400">
                 Selected: <span className="text-gray-300">{selectedMedia.title}</span> <Pill>{selectedMedia.type}</Pill>
@@ -271,7 +357,11 @@ const PostOnMetaSuite = () => {
                   <div className="relative bg-black">
                     {selectedMedia ? (
                       <>
-                        <img src={selectedMedia.url} alt="Media" className="w-full object-cover max-h-[420px]" />
+                        <img 
+                          src={selectedMedia.fileUrl || selectedMedia.thumbnailUrl || selectedMedia.url} 
+                          alt="Media" 
+                          className="w-full object-cover max-h-[420px]" 
+                        />
                         {mediaType === 'video' && (
                           <div className="absolute inset-0 flex items-center justify-center">
                             <div className="w-12 h-12 bg-black/50 rounded-full flex items-center justify-center">
@@ -318,7 +408,11 @@ const PostOnMetaSuite = () => {
                   <div className="relative aspect-square bg-black">
                     {selectedMedia ? (
                       <>
-                        <img src={selectedMedia.url} alt="Media" className="w-full h-full object-cover" />
+                        <img 
+                          src={selectedMedia.fileUrl || selectedMedia.thumbnailUrl || selectedMedia.url} 
+                          alt="Media" 
+                          className="w-full h-full object-cover" 
+                        />
                         {mediaType === 'video' && (
                           <div className="absolute inset-0 flex items-center justify-center">
                             <div className="w-12 h-12 bg-black/50 rounded-full flex items-center justify-center">

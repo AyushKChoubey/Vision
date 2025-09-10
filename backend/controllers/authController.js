@@ -3,7 +3,7 @@ import { User } from '../models/User.js';
 import { Usage } from '../models/Usage.js';
 import { Notification } from '../models/Notification.js';
 import { AppError, catchAsync } from '../middleware/errorHandler.js';
-import { generateToken, generateRefreshToken, verifyToken } from '../middleware/auth.js';
+import { generateToken, generateRefreshToken, verifyToken, verifyRefreshToken } from '../middleware/auth.js';
 
 // Helper function to create and send token
 const createSendToken = (user, statusCode, res) => {
@@ -305,7 +305,7 @@ export const refreshToken = catchAsync(async (req, res, next) => {
   }
 
   try {
-    const decoded = verifyToken(refreshToken, process.env.JWT_REFRESH_SECRET);
+    const decoded = verifyRefreshToken(refreshToken);
     const user = await User.findById(decoded.id);
 
     if (!user || !user.isActive) {

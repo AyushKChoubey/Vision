@@ -16,7 +16,7 @@ class ApiService {
     };
   }
 
-  // Generic request method
+  // Generic request method with automatic token refresh
   async request(endpoint, options = {}) {
     const url = `${this.baseURL}${endpoint}`;
     const config = {
@@ -29,6 +29,35 @@ class ApiService {
       const data = await response.json();
 
       if (!response.ok) {
+        // If token expired, try to refresh
+        if (response.status === 401 && localStorage.getItem('refresh_token') && !endpoint.includes('/auth/refresh')) {
+          try {
+            const refreshResponse = await this.auth.refreshToken();
+            if (refreshResponse.token) {
+              // Retry the original request with new token
+              const newConfig = {
+                ...config,
+                headers: {
+                  ...config.headers,
+                  Authorization: `Bearer ${refreshResponse.token}`
+                }
+              };
+              const retryResponse = await fetch(url, newConfig);
+              const retryData = await retryResponse.json();
+              
+              if (!retryResponse.ok) {
+                throw new Error(retryData.message || `HTTP error! status: ${retryResponse.status}`);
+              }
+              return retryData;
+            }
+          } catch (refreshError) {
+            // Refresh failed, clear tokens and redirect to login
+            localStorage.removeItem('auth_token');
+            localStorage.removeItem('refresh_token');
+            window.location.href = '/signin';
+            throw new Error('Session expired. Please login again.');
+          }
+        }
         throw new Error(data.message || `HTTP error! status: ${response.status}`);
       }
 
@@ -107,10 +136,19 @@ class ApiService {
 
     refreshToken: async () => {
       const refreshToken = localStorage.getItem('refresh_token');
-      return this.request('/auth/refresh', {
+      const response = await this.request('/auth/refresh', {
         method: 'POST',
         body: JSON.stringify({ refreshToken }),
       });
+      
+      if (response.token) {
+        localStorage.setItem('auth_token', response.token);
+        if (response.refreshToken) {
+          localStorage.setItem('refresh_token', response.refreshToken);
+        }
+      }
+      
+      return response;
     },
   };
 

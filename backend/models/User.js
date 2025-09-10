@@ -59,6 +59,7 @@ const userSchema = new mongoose.Schema({
   emailVerificationToken: String,
   passwordResetToken: String,
   passwordResetExpires: Date,
+  passwordChangedAt: Date,
   lastLogin: Date,
   loginCount: {
     type: Number,
@@ -130,6 +131,12 @@ userSchema.pre('save', async function(next) {
 
   // Hash the password with cost of 12
   this.password = await bcrypt.hash(this.password, 12);
+
+  // Set password changed timestamp
+  if (!this.isNew) {
+    this.passwordChangedAt = Date.now() - 1000; // Subtract 1 second to ensure JWT issued after password change
+  }
+
   next();
 });
 
