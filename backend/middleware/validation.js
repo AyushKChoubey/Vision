@@ -254,6 +254,27 @@ export const validateTemplate = [
   handleValidationErrors
 ];
 
+// Image generation validation rules
+export const validateImageGeneration = [
+  body('prompt')
+    .trim()
+    .isLength({ min: 5, max: 500 })
+    .withMessage('Prompt must be between 5 and 500 characters'),
+  body('style')
+    .optional()
+    .isIn(['realistic', 'artistic', 'cartoon', 'abstract'])
+    .withMessage('Style must be one of: realistic, artistic, cartoon, abstract'),
+  body('size')
+    .optional()
+    .isIn(['1024x1024', '1024x768', '768x1024', '1920x1080'])
+    .withMessage('Size must be one of: 1024x1024, 1024x768, 768x1024, 1920x1080'),
+  body('quality')
+    .optional()
+    .isIn(['standard', 'high', 'ultra'])
+    .withMessage('Quality must be one of: standard, high, ultra'),
+  handleValidationErrors
+];
+
 // Query parameter validation
 export const validatePagination = [
   query('page')
