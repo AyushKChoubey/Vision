@@ -7,14 +7,17 @@ import {
   deleteCreation,
   downloadCreation,
   getPublicCreations,
-  getCreationStats
+  getCreationStats,
+  generateImage,
+  testGemini
 } from '../controllers/creationController.js';
 import { protect, optionalAuth } from '../middleware/auth.js';
 import {
   validateCreation,
   validateCreationUpdate,
   validatePagination,
-  validateObjectId
+  validateObjectId,
+  validateImageGeneration
 } from '../middleware/validation.js';
 
 const router = express.Router();
@@ -24,6 +27,10 @@ router.get('/public', validatePagination, getPublicCreations);
 
 // Protected routes
 router.use(protect);
+
+// AI Generation routes
+router.post('/generate/image', validateImageGeneration, generateImage);
+router.get('/test-gemini', testGemini);
 
 // Creation CRUD operations
 router.post('/', validateCreation, createCreation);

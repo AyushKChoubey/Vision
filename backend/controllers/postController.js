@@ -26,15 +26,31 @@ export const createPost = catchAsync(async (req, res, next) => {
     return next(new AppError('Creation is not ready for posting', 400));
   }
 
-  // Check usage limits
-  const currentUsage = await Usage.findCurrent(userId);
+  // Get or create usage record for analytics (but don't enforce limits)
+  let currentUsage = await Usage.findCurrent(userId);
   if (!currentUsage) {
-    return next(new AppError('Usage record not found', 404));
+    // Create a new usage record if it doesn't exist
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    
+    currentUsage = await Usage.create({
+      userId,
+      period: 'monthly',
+      startDate: startOfMonth,
+      endDate: endOfMonth,
+      imagesGenerated: 0,
+      videosGenerated: 0,
+      postsCreated: 0,
+      limits: {
+        images: 999999,
+        videos: 999999,
+        posts: 999999
+      }
+    });
   }
 
-  if (currentUsage.isLimitExceeded('posts')) {
-    return next(new AppError('You have reached your posts limit for this period', 403));
-  }
+  // No limit check - unlimited posting allowed
 
   // Validate scheduled date
   if (scheduledAt && new Date(scheduledAt) <= new Date()) {

@@ -22,17 +22,17 @@ const usageSchema = new mongoose.Schema({
   limits: {
     images: {
       type: Number,
-      default: 10,
+      default: 1000, // Increased for testing
       min: [0, 'Image limit cannot be negative']
     },
     videos: {
       type: Number,
-      default: 3,
+      default: 100, // Increased for testing
       min: [0, 'Video limit cannot be negative']
     },
     posts: {
       type: Number,
-      default: 20,
+      default: 500, // Increased for testing
       min: [0, 'Post limit cannot be negative']
     }
   },

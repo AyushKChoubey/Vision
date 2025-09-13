@@ -4,6 +4,199 @@ import { Analytics } from '../models/Analytics.js';
 import { Notification } from '../models/Notification.js';
 import { AppError, catchAsync } from '../middleware/errorHandler.js';
 import { uploadToCloudinary, deleteFromCloudinary } from '../config/cloudinary.js';
+import { generateImageWithGemini, validateImageRequest, testGeminiConnection } from '../config/gemini.js';
+
+// @desc    Test Gemini API connection
+// @route   GET /api/creations/test-gemini
+// @access  Private
+export const testGemini = catchAsync(async (req, res, next) => {
+  const testResult = await testGeminiConnection();
+  
+  res.status(200).json({
+    status: testResult.success ? 'success' : 'error',
+    data: testResult
+  });
+});
+
+// @desc    Generate image using AI
+// @route   POST /api/creations/generate/image
+// @access  Private
+export const generateImage = catchAsync(async (req, res, next) => {
+  const userId = req.user._id;
+  const { prompt, style = 'realistic', size = '1024x1024', type = 'image' } = req.body;
+
+  // Validate the request
+  try {
+    validateImageRequest(prompt, { style, size });
+  } catch (error) {
+    return next(new AppError(error.message, 400));
+  }
+
+  // Get or create usage record for analytics (but don't enforce limits)
+  let currentUsage = await Usage.findCurrent(userId);
+  if (!currentUsage) {
+    // Create a new usage record if it doesn't exist
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    
+    currentUsage = await Usage.create({
+      userId,
+      period: 'monthly',
+      startDate: startOfMonth,
+      endDate: endOfMonth,
+      imagesGenerated: 0,
+      videosGenerated: 0,
+      limits: {
+        images: 999999, // Essentially unlimited
+        videos: 999999  // Essentially unlimited
+      }
+    });
+  }
+
+  // Create creation record immediately
+  const creation = await Creation.create({
+    userId,
+    type: 'image',
+    title: `Generated Image - ${new Date().toLocaleDateString()}`,
+    description: `AI generated image from prompt: "${prompt}"`,
+    prompt,
+    style,
+    size,
+    status: 'generating'
+  });
+
+  // Increment usage for analytics only (no limit enforcement)
+  await currentUsage.incrementUsage('images');
+
+  // Create analytics record
+  const analyticsRecord = await Analytics.create({
+    userId,
+    type: 'creation',
+    entityId: creation._id,
+    entityType: 'Creation',
+    metrics: {
+      generationTime: 0,
+      fileSize: 0,
+      status: 'generating',
+      model: 'Gemini AI',
+      style,
+      prompt: prompt.substring(0, 100) // Store first 100 chars for analytics
+    }
+  });
+
+  // Return immediately with creation info
+  res.status(201).json({
+    status: 'success',
+    data: {
+      creation,
+      message: 'Image generation started. You will be notified when complete.'
+    }
+  });
+
+  // Generate image asynchronously (but don't await here to return response immediately)
+  setImmediate(async () => {
+    try {
+      console.log('🎨 Starting async image generation for creation:', creation._id);
+      const startTime = Date.now();
+      
+      // Generate image using Gemini AI
+      const result = await generateImageWithGemini(prompt, { style, size });
+      
+      const generationTime = (Date.now() - startTime) / 1000; // in seconds
+      console.log('⏱️ Generation time:', generationTime, 'seconds');
+      
+      if (result.success) {
+        console.log('✅ Image generation successful, updating creation...');
+        console.log('🖼️ Generated image URL:', result.imageUrl);
+        
+        // Test if the URL is accessible
+        try {
+          const testResponse = await fetch(result.imageUrl, { method: 'HEAD' });
+          console.log('🔗 URL accessibility test:', testResponse.ok ? 'ACCESSIBLE' : 'NOT ACCESSIBLE');
+          console.log('🔗 Response status:', testResponse.status);
+        } catch (urlError) {
+          console.warn('⚠️ URL test failed:', urlError.message);
+        }
+        
+        // Update creation with generated image
+        const updatedCreation = await Creation.findByIdAndUpdate(
+          creation._id,
+          {
+            status: 'completed',
+            fileUrl: result.imageUrl,
+            thumbnailUrl: result.imageUrl,
+            fileSize: Math.floor(Math.random() * 3000000) + 500000, // Simulated file size
+            generationTime,
+            model: 'Gemini AI Enhanced',
+            metadata: {
+              enhancedPrompt: result.enhancedPrompt,
+              originalPrompt: result.originalPrompt,
+              style: result.style,
+              size: result.size,
+              quality: result.quality,
+              format: 'jpg'
+            }
+          },
+          { new: true }
+        );
+
+        console.log('✅ Creation updated successfully:', updatedCreation._id);
+        console.log('📊 Updated creation fileUrl:', updatedCreation.fileUrl);
+
+        // Update analytics
+        await Analytics.findByIdAndUpdate(analyticsRecord._id, {
+          'metrics.generationTime': generationTime,
+          'metrics.fileSize': updatedCreation.fileSize,
+          'metrics.status': 'completed',
+          'metrics.success': true
+        });
+
+        // Create success notification
+        await Notification.createNotification(
+          userId,
+          'generation_complete',
+          'Image Generation Complete',
+          `Your image "${updatedCreation.title}" has been generated successfully!`,
+          { 
+            creationId: creation._id, 
+            type: 'image', 
+            title: updatedCreation.title,
+            imageUrl: result.imageUrl
+          },
+          { priority: 'medium' }
+        );
+      } else {
+        throw new Error('Image generation failed');
+      }
+    } catch (error) {
+      console.error('❌ Async image generation error:', error);
+      
+      // Update creation status to failed
+      await Creation.findByIdAndUpdate(creation._id, {
+        status: 'failed',
+        error: error.message
+      });
+
+      // Update analytics
+      await Analytics.findByIdAndUpdate(analyticsRecord._id, {
+        'metrics.status': 'failed',
+        'metrics.success': false,
+        'metrics.error': error.message
+      });
+
+      // Create failure notification
+      await Notification.createNotification(
+        userId,
+        'system',
+        'Image Generation Failed',
+        `Failed to generate your image. Please try again. Error: ${error.message}`,
+        { creationId: creation._id, type: 'image', error: error.message },
+        { priority: 'high' }
+      );
+    }
+  });
+});
 
 // @desc    Create new creation
 // @route   POST /api/creations
@@ -12,16 +205,30 @@ export const createCreation = catchAsync(async (req, res, next) => {
   const userId = req.user._id;
   const { type, title, description, prompt, style, size, duration, quality } = req.body;
 
-  // Check usage limits
-  const currentUsage = await Usage.findCurrent(userId);
+  // Get or create usage record for analytics (but don't enforce limits)
+  let currentUsage = await Usage.findCurrent(userId);
   if (!currentUsage) {
-    return next(new AppError('Usage record not found', 404));
+    // Create a new usage record if it doesn't exist
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    
+    currentUsage = await Usage.create({
+      userId,
+      period: 'monthly',
+      startDate: startOfMonth,
+      endDate: endOfMonth,
+      imagesGenerated: 0,
+      videosGenerated: 0,
+      limits: {
+        images: 999999, // Essentially unlimited
+        videos: 999999  // Essentially unlimited
+      }
+    });
   }
 
   const usageType = type === 'image' ? 'images' : 'videos';
-  if (currentUsage.isLimitExceeded(usageType)) {
-    return next(new AppError(`You have reached your ${usageType} generation limit for this period`, 403));
-  }
+  // No limit check - unlimited generation allowed
 
   // Create creation record
   const creation = await Creation.create({
@@ -36,7 +243,8 @@ export const createCreation = catchAsync(async (req, res, next) => {
     quality
   });
 
-  // Increment usage
+  // Increment usage for analytics only
+  await currentUsage.incrementUsage(usageType);
   await currentUsage.incrementUsage(usageType);
 
   // Create analytics record
@@ -172,6 +380,13 @@ export const getCreation = catchAsync(async (req, res, next) => {
   if (creation.userId._id.toString() !== req.user._id.toString() && !creation.isPublic) {
     return next(new AppError('You do not have permission to view this creation', 403));
   }
+
+  console.log('📡 Returning creation to frontend:', {
+    id: creation._id,
+    status: creation.status,
+    fileUrl: creation.fileUrl,
+    hasFileUrl: !!creation.fileUrl
+  });
 
   res.status(200).json({
     status: 'success',

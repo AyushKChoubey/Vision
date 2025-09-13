@@ -1,14 +1,18 @@
 import React, { useState } from 'react'
 import { Wand2, Download, Share2, Copy, Sparkles, Image as ImageIcon } from 'lucide-react'
 import apiService from '../services/api.js'
+import { useAuth } from '../context/AuthContext.jsx'
 
 const GenerateImages = () => {
+  const { user, isAuthenticated } = useAuth()
   const [prompt, setPrompt] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
   const [generatedImage, setGeneratedImage] = useState(null)
   const [imageStyle, setImageStyle] = useState('realistic')
   const [imageSize, setImageSize] = useState('1024x1024')
   const [error, setError] = useState(null)
+
+  console.log('🔐 Auth status:', { user: !!user, isAuthenticated, hasToken: !!localStorage.getItem('auth_token') });
 
   const dummyImages = [
     'https://images.unsplash.com/photo-1707343843437-caacff5cfa74?w=400',
@@ -20,8 +24,23 @@ const GenerateImages = () => {
   const handleGenerate = async () => {
     if (!prompt.trim()) return
     
+    console.log('🎨 Starting image generation...');
+    console.log('Prompt:', prompt);
+    console.log('Options:', { style: imageStyle, size: imageSize, type: 'image' });
+    
+    // Check authentication first
+    const token = localStorage.getItem('auth_token');
+    console.log('🔐 Auth token present:', !!token);
+    
+    if (!token) {
+      setError('Please sign in to generate images');
+      return;
+    }
+    
+    // Reset all states for new generation
     setIsGenerating(true)
     setError(null)
+    setGeneratedImage(null) // Clear previous image
     
     try {
       const response = await apiService.creations.generateImage(prompt, {
@@ -30,21 +49,83 @@ const GenerateImages = () => {
         type: 'image'
       })
 
+      console.log('✅ API Response:', response);
+
       if (response.status === 'success' && response.data.creation) {
-        setGeneratedImage(response.data.creation.fileUrl || response.data.creation.thumbnailUrl)
+        const creationId = response.data.creation._id;
+        console.log('📡 Starting to poll for completion...', creationId);
+        
+        // Poll for completion since image generation is asynchronous
+        await pollForCompletion(creationId);
       } else {
         throw new Error(response.message || 'Failed to generate image')
       }
     } catch (error) {
-      console.error('Image generation error:', error)
+      console.error('❌ Image generation error:', error)
       setError(error.message)
-      
-      // Fallback to dummy image for demo purposes
-      const randomImage = dummyImages[Math.floor(Math.random() * dummyImages.length)]
-      setGeneratedImage(randomImage)
-    } finally {
       setIsGenerating(false)
+      
+      // Don't show fallback image on error, let user try again
+      console.log('❌ Generation failed, user can retry');
     }
+  }
+
+  // Poll for image completion
+  const pollForCompletion = async (creationId, maxAttempts = 30) => {
+    console.log('📡 Starting to poll for creation:', creationId);
+    
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        console.log(`📡 Polling attempt ${attempt}/${maxAttempts}...`);
+        
+        const creation = await apiService.creations.getById(creationId);
+        console.log('📊 Polling response:', creation);
+        
+        if (creation.status === 'success' && creation.data.creation) {
+          const creationData = creation.data.creation;
+          console.log('📊 Creation status:', creationData.status);
+          console.log('🖼️ Creation fileUrl:', creationData.fileUrl);
+          console.log('🔗 Has valid URL:', !!creationData.fileUrl);
+          
+          if (creationData.status === 'completed' && creationData.fileUrl) {
+            console.log('🎉 Image generation completed!');
+            console.log('🖼️ Final image URL:', creationData.fileUrl);
+            
+            // Test if image URL loads
+            try {
+              const img = new Image();
+              img.onload = () => console.log('✅ Image loads successfully');
+              img.onerror = () => console.error('❌ Image failed to load');
+              img.src = creationData.fileUrl;
+            } catch (imgError) {
+              console.warn('⚠️ Image test error:', imgError);
+            }
+            
+            setGeneratedImage(creationData.fileUrl);
+            setIsGenerating(false);
+            return;
+          } else if (creationData.status === 'failed') {
+            console.log('❌ Image generation failed');
+            throw new Error('Image generation failed');
+          }
+          // If still generating, continue polling
+          console.log('⏳ Still generating, continuing to poll...');
+        }
+        
+        // Wait 2 seconds before next poll
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      } catch (pollError) {
+        console.error('❌ Polling error:', pollError);
+        
+        if (attempt === maxAttempts) {
+          // On final attempt, show error
+          console.log('⏰ Polling timeout reached');
+          throw new Error('Image generation timed out');
+        }
+      }
+    }
+    
+    setIsGenerating(false);
   }
 
   return (
@@ -216,11 +297,53 @@ const GenerateImages = () => {
             <div className='text-center max-w-4xl w-full'>
               <h2 className='text-2xl font-semibold text-[#FFD700] mb-6'>Generated Image</h2>
               <div className='relative group'>
+                {/* Image with error handling */}
                 <img 
                   src={generatedImage} 
                   alt='Generated content' 
                   className='w-full max-w-2xl mx-auto rounded-2xl shadow-2xl border-4 border-[#FFD700]'
+                  onLoad={() => console.log('✅ Image loaded successfully:', generatedImage)}
+                  onError={(e) => {
+                    console.error('❌ Image failed to load:', generatedImage);
+                    console.error('❌ Error details:', e);
+                    // Try to reload the image once
+                    if (!e.target.dataset.retried) {
+                      e.target.dataset.retried = 'true';
+                      setTimeout(() => {
+                        e.target.src = e.target.src + '&retry=1';
+                      }, 1000);
+                    } else {
+                      // If retry fails, show fallback
+                      e.target.src = dummyImages[0];
+                      setError('Image failed to load, showing fallback');
+                    }
+                  }}
+                  style={{ 
+                    minHeight: '400px',
+                    backgroundColor: '#2A2A2A',
+                    display: 'block'
+                  }}
                 />
+                
+                {/* Loading overlay while image loads */}
+                <div 
+                  className='absolute inset-0 bg-[#2A2A2A] border-4 border-[#FFD700] rounded-2xl flex items-center justify-center'
+                  style={{ display: 'none' }}
+                  ref={(el) => {
+                    if (el && generatedImage) {
+                      // Show loading overlay, hide when image loads
+                      const img = el.previousElementSibling;
+                      el.style.display = 'flex';
+                      img.onload = () => { el.style.display = 'none'; };
+                      img.onerror = () => { el.style.display = 'none'; };
+                    }
+                  }}
+                >
+                  <div className='text-center'>
+                    <Sparkles className='w-8 h-8 text-[#FFD700] animate-spin mx-auto mb-2' />
+                    <p className='text-gray-300'>Loading image...</p>
+                  </div>
+                </div>
                 
                 {/* Action Buttons Overlay */}
                 <div className='absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-2xl flex items-center justify-center'>
@@ -263,15 +386,47 @@ const GenerateImages = () => {
                   <span className='text-gray-400'>Prompt:</span>
                   <p className='text-white text-sm mt-1 italic'>"{prompt}"</p>
                 </div>
+                {/* Debug: Show actual image URL */}
+                <div className='mt-3 p-2 bg-[#0F0F0F] rounded border border-[#333333]'>
+                  <span className='text-gray-400 text-xs'>Debug - Image URL:</span>
+                  <p className='text-green-400 text-xs mt-1 break-all font-mono'>{generatedImage}</p>
+                  <button 
+                    onClick={() => {
+                      navigator.clipboard.writeText(generatedImage);
+                      console.log('📋 Copied URL to clipboard:', generatedImage);
+                    }}
+                    className='mt-1 px-2 py-1 bg-[#FFD700] text-[#0F0F0F] text-xs rounded hover:bg-[#FFA500]'
+                  >
+                    Copy URL
+                  </button>
+                  <button 
+                    onClick={() => window.open(generatedImage, '_blank')}
+                    className='mt-1 ml-2 px-2 py-1 bg-[#333333] text-white text-xs rounded hover:bg-[#444444]'
+                  >
+                    Open in New Tab
+                  </button>
+                </div>
               </div>
 
               {/* Action Buttons */}
               <div className='flex gap-4 mt-6 justify-center'>
                 <button 
-                  onClick={() => {setGeneratedImage(null); setPrompt('')}}
+                  onClick={() => handleGenerate()}
+                  disabled={isGenerating}
+                  className='px-6 py-3 bg-[#333333] text-[#FFD700] rounded-lg hover:bg-[#444444] transition border border-[#FFD700] disabled:opacity-50 disabled:cursor-not-allowed'
+                >
+                  Generate Again
+                </button>
+                <button 
+                  onClick={() => {
+                    setGeneratedImage(null)
+                    setPrompt('')
+                    setError(null)
+                    setIsGenerating(false)
+                  }}
                   className='px-6 py-3 bg-[#2A2A2A] text-white rounded-lg hover:bg-[#333333] transition border border-[#333333]'
                 >
-                  Generate New
+                  New Prompt
                 </button>
                 <button className='px-6 py-3 bg-gradient-to-r from-[#FFD700] to-[#FFA500] text-[#0F0F0F] rounded-lg hover:scale-105 transition-transform font-medium'>
                   Post to Social Media
